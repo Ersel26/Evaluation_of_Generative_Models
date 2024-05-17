@@ -1,0 +1,374 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\title{CENG796 - Topic Summary: \\ Evaluation Metrics For Generative Models}
+\author{Meriç Karadayı - 2448553, İbrahim Ersel Yigit - 2449072}
+\date{April 2024}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+\paragraph{}
+Evaluation drives the progress of generative models, as it does in any research field. So we should evaluate the generative models properly. But it is not a trivial task. The technique we should use to evaluate the model highly depends on what we care.
+\paragraph{}
+While developing generative models, in different task we may care about obtaining a good density estimation, good sampling, or a good latent representation learning. Some task even may require multiple of them. In this document, we will explain the methods and elaborate them for each, respectively. Furthermore, we will mention evaluation methods for text domain generative models.
+
+\section{Density Estimation Metrics}
+    \paragraph{}
+    Evaluating the density estimation of generative models involves assessing how well these models can estimate the probability distribution of the data they are trained on. It may require different approach for different architectures.
+    \subsection{Models with tractable likelihoods}
+    \paragraph{}
+    Some of generative model architectures like auto-regressive models or gaussian mixture models, have tractable likelihood, which makes density estimation straightforward. It can be done by following steps:
+    \begin{enumerate}
+        \item First, split the dataset into train, validation, and test sets
+        \item Evaluate gradients based on train set
+        \item Tune hyperparameters by using validation set
+        \item Compute the log-likelihood of the test data under the model. (In language models, perplexity may be used instead of log-likelihood)
+    \end{enumerate}
+    \subsection{Kernel Density Estimation}
+    \paragraph{}
+    Unfortunately, not all generative models have tractable likelihood. Therefore, we need a more general method to evaluate the density estimation. Kernel Density Estimation provides us this.
+    \paragraph{}
+    Kernel density estimation is a technique for estimation of probability density function that is a must-have enabling the user to better analyse the studied probability distribution than when using a traditional histogram, as it explained in \hyperref[sec: ref1]{[1]}. Intuitively, a kernel is measure of similarity between pairs of points. Which means the kernel function should return higher when two points are closer to each other.
+    \paragraph{}
+    Computing the kernel density estimation over S can be done by following: \\
+    \begin{center}
+        $ \widehat{p}(x) = \frac{1}{n} \sum_{x^(i) \in S}K(\frac{x - x^{(i)}}{\sigma}) $ where;
+    \end{center}
+    \begin{center}
+        $K $ is the kernel function and $ \sigma$ is the bandwidth
+    \end{center}
+    \paragraph{}
+    The Kernel Function need to be a non-negative function that satisfy the following properties:
+    \begin{itemize}
+        \item Normalization: $ \int_{-\infty}^{\infty} K(u) du = 1 $
+        \item Symmetric: $ K(u) = K(-u) $ for all u
+    \end{itemize}
+    \paragraph{}
+    The badtwidth $\sigma$ is a hyperparameter that controls the smoothness that brings more smoother kernel function with higher value. This parameter may and should be tuned with cross-validation.
+    \paragraph{}
+    It should be noted that Kernel Density Estimation method gets more unreliable as the number of dimension gets higher.
+    
+    \subsection{Importance Sampling}
+    \paragraph{}
+    Importance sampling is introduced in \hyperref[sec: ref2]{[2]} and it is a Monte Carlo method used to evaluate properties of one distribution by using samples generated from a different distribution. Importance sampling has plenty of application related with statistics and it can also be used while evaluating the density estimation. Which also called Annealed Importance Sampling (AIS) \hyperref[sec: ref3]{[3]}
+    \paragraph{}
+    Annealed Importance Sampling can be perform by following the steps;
+    \begin{enumerate}
+        \item Initialize: Start with samples from an easy-to-sample initial distribution
+        \item Annealing Schedule: Define a sequence of intermediate distributions that progressively transition from the initial distribution to the target distribution.
+        \item Importance Weights: Calculate weights for each sample based on the ratios of probabilities between consecutive distributions.
+        \item Combining Weights: Accumulate the weights across all transitions to estimate the overall importance weight for each sample.
+    \end{enumerate}
+
+    \paragraph{}
+    Note that this method provides unbiased estimates of likelihoods but biased estimates of log-likelihood.
+    
+    \subsection{Laplace Approximation}
+    \paragraph{}
+    In the above sections we have mentioned that we cannot straightforwardly estimate the density 
+    \begin{center}
+        \hspace{3cm} $p_X(x) = \int p_{x|z}(x|z)p_z(z)dz$   \label{sec: eq1} \hspace{3cm} (1)
+    \end{center}
+     when we do not know the $p_Z(z)$ which is the case for many generative model architectures like VAEs and GANs.
+    \paragraph{}
+    \hyperref[sec: ref4]{[4]} proposes that even though we cannot estimate the \hyperref[sec: eq1]{(1)}, we still can approximate it by Laplace's Method.
+    \begin{center}
+        $p_X(x) \approx (\frac{1}{\sqrt{2\pi}})^n \sigma^{-n} \sqrt{det(\Sigma)} e^{-\frac{c(x)}{2}}$
+    \end{center}
+    
+    \subsection{Parzen Window Density Estimation}
+    \paragraph{}
+    When the tractable likelihoods of the model are not available, another common alternative is Parzen window estimation \hyperref[sec: ref5]{[5]}.
+    In this method we do the followings in order;
+    \begin{enumerate}
+        \item Generate samples from the model
+        \item Use the samples to construct a tractable model (typically a kernel density estimator with Gaussian kernel)
+        \item Evaluate likelihoods under this tractable model
+        \item Used them as proxy for the true model likelihoods
+    \end{enumerate}
+    \paragraph{}
+    It need to be always considered while using Parzen window estimation, the method generally could not brings likelihoods similar to likelihoods of the true model, when the number of data dimension gets higher, even the large number of sample generated.
+
+\section{Sampling/Generation Metrics}
+\paragraph{}
+Evaluating the quality of sampling or generation can be basically considered as the generated samples how looks good. The diversity of the generated samples should be keep in mind in order to separate the memorizing the dataset and a good generation which is not a trivial task.
+\paragraph{}
+Quantitative evaluation of qualitative task may have different answer with different methods, in this document we will explain some of popular methods and metrics.
+    \subsection{Inception Score (IS)}
+    \paragraph{}
+    Inception Score is used to evaluate both image quality and output diversity of the model. While calculating the Inception Score we need to make following 2 assumptions;
+    \begin{itemize}
+        \item We are evaluating sample quality for generative models that trained on labelled datasets.
+        \item We have a good probabilistic classifier $c(y|x)$ where $y$ is the predicted label and $x$ is the data point. (Typically pre-trained inception classifier is used as $c(y|x)$)
+    \end{itemize}
+    \paragraph{}
+    Inception Score method declares that samples from a good generative model should satisfy two criteria; Sharpness and Diversity.
+        \subsubsection{Sharpness}
+        \paragraph{}
+        The sharpness score $S$ is computed as:
+        \begin{center}
+            $S = exp(E_{x\sim p}[\int c(y|x)logc(y|x)dy])$
+        \end{center}
+        and high sharpness score implies better image quality.
+        
+        \subsubsection{Diversity}
+        The diversity score $D$ is computed as:
+        \begin{center}
+            $D = exp(-E_{x\sim p}[\int c(y|x)logc(y)dy])$
+        \end{center}
+        and high diversity score implies better generalization.
+        \paragraph{}
+        Inception Score combines the sharpness score and diversity score, and calculated as following; $IS = S \times D$ . Therefore, obviously higher Inception Score (IS) indicates the model has better generation and sampling.
+        \paragraph{}
+        Inception Score can also be interpreted as;
+        \begin{center}
+            $IS = exp(\mathbb{E}_{x\sim p_g}D_{KL}(p(y|x)||p(y)))$
+        \end{center}
+        which indicates, exponential of the Kullback-Leibler (KL) divergence between the conditional label distribution (given a data point) and the marginal label distribution (overall distribution across all generated samples)
+    \subsection{Frechet Inception Distance (FID)}
+    \paragraph{}
+    Inception Score considers image quality and diversity of generated samples, but it does not explicitly consider the training data distribution. On the other hand, Frechet Inception Distance measures the similarity between generated data distribution and the real data distribution, by using their feature representation.
+
+    \paragraph{}
+    In order to calculate FID, lets denote $G$ the generated sample distribution, $T$ the real data distribution, and $F$ a feature representation extractor (typically prefinal layer of Inception Net)
+
+    \paragraph{}
+    Then follow these steps in order;
+    \begin{itemize}
+        \item Compute $F_G$ and $F_T$ which represents the feature representation of $G$ and $T$ respectively.
+        \item Fit two multivariate Gaussian distribution for $F_G$ and $F_T$. Lets denote them ($\mu_G$, $\Sigma_G$) and ($\mu_T$, $\Sigma_T$) respectively. Note that $\mu$ represents mean and $\Sigma$ represents covariance of corresponding multivariate Gaussian distribution.
+        \item Finally compute the FID score as:
+        \begin{center}
+            $FID = \|\mu_T - \mu_G\|^2 - Tr(\Sigma_T + \Sigma_G - 2(\Sigma_T\Sigma_G)^{1/2})$ 
+        \end{center}
+        where; $Tr(M)$ means Trace of matrix $M$
+    \end{itemize}
+    \paragraph{}
+    Even though it can be inferred by the formula, it should be noted that, lower Frechet Inception Distance (FID) indicates a model with better sampling/generation.
+    \subsection{Maximum Mean Discrepancy (MMD)}
+    \paragraph{}
+    In general, Maximum Mean Discrepancy is a statistic that describe difference between two distributions $p$ and $q$ by using their moments which obtained by a kernel \hyperref[sec: ref6]{[6]}. For example, obtaining moments mean and variance via Gaussian as kernel.
+
+    \paragraph{}
+    Maximum Mean Discrepancy (MMD) between distributions $p$ and $q$ is calculated as;
+    \begin{center}
+        $MMD(p, q) = E_{x, x'\sim p}[K(x, x')] + E_{x, x'\sim q}[K(x, x')] - 2 E_{x\sim p, x'\sim q}[K(x, x')]$
+    \end{center}
+    where; $K$ is stands for the kernel.
+
+    \paragraph{}
+    Note that, $MMD(p, q)$ measures the similarity between distributions $p$ and $q$, and lower MMD values indicates closer distributions $p$ and $q$. Reasonably it is equal to 0 if and only if $p = q$ \hyperref[sec: ref6]{[6]}.
+
+    \paragraph{}
+    More specifically, in order to use Maximum Mean Discrepancy for evaluation of sampling/generation quality of a model, we simply choose $p$ as the real data distribution and $q$ as generated data distribution. In that way, we basically measure the similarity of real data distribution and generated data distribution like we did while computing FID.
+
+    \subsection{Kernel Inception Distance (KID)}
+    \paragraph{}
+    Kernel Inception Distance takes MMD one step forward. KID is calculated by again computing the Maximum Mean Discrepancy, but instead of using their moment, now we compute the MMD in the feature space of a classifier (typically a neural network like Inception).
+        \subsubsection{FID vs KID}
+        \paragraph{}
+        There is a trade-off between using FID or KID for evaluating generative models. KID has two main advantage over FID;
+        \begin{itemize}
+            \item Unlike the FID, the KID has a simple unbiased estimator \hyperref[sec: ref8]{[8]}.
+            \item While FID fits a Gaussian distribution, KID does not require any specific distribution \hyperref[sec: ref8]{[8]}.
+        \end{itemize}
+        \paragraph{}
+        On the other hand, FID has a computational advantage over KID. While FID can be computed in $O(N)$, KID evaluation requires $O(N^2)$.
+        
+    \subsection{Feature Likelihood Divergence (FLD)}
+    \paragraph{}
+    Even though, all IS, FID, KID metrics that are explained above are commonly used to evaluation of sampling quality of generative models, recent research \hyperref[sec: ref9]{[9]} states that they have considerable limitations such as;
+    \begin{itemize}
+        \item being insensitive to over-fitting
+        \item could not generalizing beyond the training dataset.
+    \end{itemize}
+    \paragraph{}
+    In order to overcome such issues a new metric called Feature Likelihood Divergence (FLD) is proposed. a novel sample-based metric that captures sample fidelity, diversity, and novelty. FLD enjoys the same scalability as popular sample-based metrics such as FID and IS but crucially also assesses sample novelty, over-fitting, and memorization \hyperref[sec: ref9]{[9]}.
+
+    \paragraph{}
+    Feature Likelihood Divergence between real data distribution ($D_T$) and generated data distribution ($D_G$) can be computed as;
+    \begin{center}
+        $FLD(D_T, D_G) = -\frac{100}{d}logp_{\hat{\sigma}}(D_T|D_G) - C$
+    \end{center}
+    where;
+    \begin{itemize}
+        \item $logp_{\hat{\sigma}}(D)$ is a Mixture of Gaussian density estimator
+        \item $d$ is the dimension of feature space
+        \item $C$ is a dataset dependent constant
+    \end{itemize}
+    \paragraph{}
+    Note that, higher FLD values indicates problems in one or more areas (fidelity, diversity, novelty) evaluated by FLD \hyperref[sec: ref9]{[9]}.
+
+    \subsection{Novel Representation of Precision/Recall}
+    \paragraph{}
+    Sampling/generation quality of generative models can be evaluating by redefining the precision and recall metrics which are already commonly used in discriminative tasks.
+    \paragraph{}
+    \hyperref[sec: ref10]{[10]} points out the deficiency of commonly used metrics IS and FID which is being unable to distinguish between different failure cases since they only yield one-dimensional scores. Therefore they propose a new definition for precision and recall such that they will be applicable for probability distributions.
+
+    \paragraph{}
+    The formal definition made in \hyperref[sec: ref10]{[10]} is given as following;
+    \paragraph{}
+    For $\alpha, \beta \in (0, 1]$ the probability distribution $Q$ has precision $\alpha$ at recall $\beta$ with respect to another probability distribution $P$ if there exist distributions $\mu$, $\upsilon_P$, $\upsilon_Q$ such that;
+    \begin{center}
+        $P = \beta \mu + (1 - \beta) \upsilon_P$ and $Q = \alpha \mu + (1 - \alpha) \upsilon_Q$
+    \end{center}
+    where; 
+    \begin{itemize}
+        \item $\upsilon_P$ stands for the part of $P$ that is “missed” by $Q$
+        \item $\upsilon_Q$ stands for  the noise part of $Q$ 
+    \end{itemize}
+
+    \paragraph{}
+    The behaviour of the newly defined for generative model evaluation precision and recall are quite similar to traditional precision and recall concepts. Intuitively;
+    \begin{itemize}
+        \item precision measures, how much of $Q$ can be generated by a “part” of $P$
+        \item recall measures, how much of $P$ can be generated by a “part” of $Q$
+    \end{itemize}
+    when we embrace $P$ as the reference distribution.
+    
+\section{Latent Representation Metrics}
+    Evaluating generative models using latent representations involves assessing how well the model captures and utilizes the underlying structure of the data in its latent space. Latent space is where the data is encoded into a lower-dimensional representation, capturing the essential features and variations.
+    Latent representations can be evaluated using relevant performance metrics, such as accuracy for semi-supervised learning and reconstruction quality for denoising tasks. For unsupervised tasks, no single metric applies universally. Instead, three commonly used approaches for evaluating unsupervised latent representations are clustering, compression, and disentanglement. 
+    \subsection{Clustering}
+    
+Clusters can be obtained by applying k-means or other clustering algorithms within the latent space of generative models. This approach helps to evaluate how well the generative model organizes the data into meaningful groupings. For labeled datasets, numerous quantitative evaluation metrics can be employed to assess the quality of these clusters. Examples include \textbf{completeness score}, \textbf{homogeneity score}, and \textbf{V-measure score}\hyperref[sec: ref7]{[7]}, which provide insights into how accurately and coherently the clusters reflect the underlying data distribution. It is important to note that these labels are used exclusively for evaluation purposes and do not influence the clustering process itself. This ensures that the generative model's ability to learn and represent the data structure remains unbiased and unsupervised, while still allowing for a rigorous assessment of its clustering performance.  
+    
+     
+    \subsubsection{Homogeneity}
+    In order to satisfy homogeneity criteria a, a clustering must assign only the data points that are members of a single class to a single cluster. The class distribution within each cluster should be skewed to a single class, that is, zero entropy.  It determines how close a given clustering is to this ideal by examining the conditional entropy of the class distribution given the proposed clustering. 
+    
+    \[
+        h= 
+    \begin{cases}
+        1,& \text{if } H(C,K)=0\\
+        \frac{1 - H(C | K)}{H(C)},              & \text{else}
+    \end{cases}
+    \]
+    
+    
+    
+    Where \(H\) is the entropy.
+    
+   \( H(C|K)\) is maximal (and equal to \(H(C)\)) when the class distribution within each cluster is equal to the overall class distribution. \(H(C|K) \)is 0 when each cluster contains only members of a single class, a perfectly homogenous clustering.
+
+   \(h\) is maximized when all of its clusters contain only data points that are members of a single class 
+    
+        \subsubsection{Completeness}
+    Completeness is symmetrical to homogeneity. In order to satisfy the completeness criteria, a clustering must assign all of those data points that are members of a single class to a single cluster. To evaluate the completeness, the distribution of cluster assignments within each class is examined. In a perfectly complete clustering solution, each of these distributions will be completely skewed to a single cluster 
+    \[
+        c= 
+    \begin{cases}
+        1,& \text{if } H(K,C)=0\\
+        \frac{1 - H(K | C)}{H(K)},              & \text{else}
+    \end{cases}
+    \]
+
+    In the perfectly complete case, \(H(K|C) = 0\). However, in the worst-case scenario, each class is represented by every cluster with a distribution equal to the distribution of cluster sizes, \( H(K|C)\) is maximal and equals H(K).  Finally, in the degenerate case where \(H(K) = 0\), when there is a single cluster, we define completeness to be 1.
+
+    \(c\) is maximized when all the data points that are members of a given class are elements of the same cluster.
+    
+    \subsubsection{V measure Score}
+    V measure Score is also called normalized mutual information. It is an entropy-based measure that explicitly measures how successfully the criteria of homogeneity and completeness have been satisfied. V measure is computed as the harmonic mean of distinct homogeneity and completeness scores, just as precision and recall are commonly combined into F-measure.    
+\[
+V_{\beta} = \frac{(1+\beta) * h * c}{(\beta * h)+c}
+\]
+if \(\beta\) is greater than 1 completeness is weighted more strongly in the calculation, if  \(\beta\) is less than 1, homogeneity is weighted more strongly 
+\\\\
+Computations of homogeneity, completeness, and V measure are completely independent of the number of classes, the number of clusters, the size of the data set, and the clustering algorithm used. Thus these measures can be applied to and compared across any clustering solution, regardless of the number of data points (n-invariance), the number of classes, or the number of clusters. 
+    \subsection{Compression}
+    Latent representations can be evaluated by assessing their compression capabilities while maintaining high fidelity in reconstruction accuracy.  This evaluation often employs conventional metrics such as Mean Squared Error (MSE), Peak Signal Noise Ratio (PSNR), and Structural Similarity Index (SSIM) to indicate the quality of reconstructed data. 
+        \subsubsection{Mean Squared Error (MSE)}
+        Mean Squared Error (MSE) is a common metric used to measure the average squared difference between the actual and predicted values in a dataset. 
+        
+\[MSE = \frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{y}_i)^2\]
+where:
+
+\begin{itemize}
+    \item \textit{n} is the number of samples in the dataset.
+    \item \(y_i \) represents the actual value of the \textit{i}-th sample.
+    \item \(\hat{y}_i\) represents the predicted value of the \textit{i}-th sample.
+\end{itemize}
+ 
+        \subsubsection{Peak Signal to Noise Ratio(PSNR)}
+        Peak Signal-to-Noise Ratio (PSNR) is a metric used to evaluate the quality of a reconstructed or compressed image. It measures the ratio between the maximum possible power of a signal and the power of corrupting noise that affects the fidelity of its representation. In the context of image processing, PSNR is typically expressed in decibels (dB).  The higher the value of PSNR, the better will be the quality of the output image. 
+        
+\[
+\text{PSNR} = 10 \cdot \log \left( \frac{{\text{MAX}^2}}{{\text{MSE}}} \right)
+\]
+\[= 20 \cdot log(MAX) - 10 \cdot log(MSE)\]
+where:
+
+\begin{itemize}
+    \item \(MAX\) is the maximum possible pixel value of the image.
+    \item \(MSE\) is the Mean Squared Error, computed as the average of the squared differences between the original and the reconstructed/compressed image.
+\end{itemize}
+        \subsubsection{Structure Similarity Index (SSIM)}
+The Structural Similarity Index (SSIM) is a metric used to quantify the similarity between two images. Unlike traditional metrics such as Mean Squared Error (MSE), SSIM takes into account the perceived changes in \textbf{structural information, luminance, and contrast}, which are more aligned with human perception of image quality. 
+
+\[
+\text{SSIM}(x, y) = \frac{{(2\mu_x\mu_y + C_1)(2\sigma_{xy} + C_2)}}{{(\mu_x^2 + \mu_y^2 + C_1)(\sigma_x^2 + \sigma_y^2 + C_2)}}
+
+\]
+where:
+\begin{itemize}
+    \item \textit{x} and \textit{y} are the two compared images.
+    \item \(\mu_{x}\) and \(\mu_{y}\) are the means of \textit{x} and \textit{y}, respectively.
+    \item \(\sigma_{x}\) and \(\sigma_{y}\) are the standard deviations of \textit{x} and \textit{y}, respectively.
+    \item \(\sigma_{xy}\) is the covariance of \textit{x} and\textit{ y}.
+    \item \(C_{1}\) and \(C_{2}\) are constants added to avoid instability when the denominator approaches zero.
+\end{itemize}
+ 
+    \subsection{Disentanglement}
+    Disentanglement in generative models refers to the ability of the model to separate and represent different attributes \textbf{independently} and in a way that is easy to understand. For example, in an image of a face, factors like pose, identity, expression, and lighting can vary. A generative model with disentanglement would be able to manipulate each of these factors separately without affecting the others. This allows for more precise control over the generated data and a better understanding of its underlying structure.
+   Most of the suggested metrics for measuring disentanglement rely on an encoder network to translate input images into latent codes. However, two new methods for quantifying disentanglement have been introduced with StyleGAN}\hyperref[sec: ref11]{[11]}: Perceptual Path Length, Linear separability. These methods do not need an encoder or known factors of variation, making them applicable to any image dataset and generator. 
+   
+        \subsubsection{Perceptual Path Length (PPL)}
+        We will utilize this source: 
+        \url{https://arxiv.org/pdf/1812.04948} 
+        \subsubsection{Linear separability}
+        We will utilize this source: 
+        \url{https://arxiv.org/pdf/1812.04948} 
+        \subsubsection{Factor-VAE}
+        FactorVAE,  quantifies disentanglement by evaluating how well latent variables capture variations when a specific generative factor is fixed. The process involves selecting a generative factor, generating a batch of vectors with this factor held constant, and encoding these vectors into latent codes. These codes are then normalized by their empirical standard deviation, and the variance of each dimension is computed. The dimension with the lowest variance, along with the fixed factor, provides a training point for a classifier. FactorVAE is the accuracy of this classifier in predicting the fixed generative factor, thereby assessing the model's disentanglement capability. 
+         
+        
+    
+\section{Text Based Generative Model Evaluation Metrics}
+    \subsection{Recall-Oriented Understudy for Gisting Evaluation (ROUGE)}
+    \subsection{Bilingual Evaluation Understudy (BLEU)}
+
+\section{Conclusion}
+
+\section{References}
+\paragraph{}
+\label{sec: ref1} [1] Weglarczyk, S. (2018). Kernel density estimation and its application. In ITM web of conferences (Vol. 23, p. 00037). EDP Sciences.
+\paragraph{}
+\label{sec: ref2}[2]  Kloek, T.; van Dijk, H. K. (1978). "Bayesian Estimates of Equation System Parameters: An Application of Integration by Monte Carlo" (PDF). Econometrica. 46 (1): 1–19. doi:10.2307/1913641. JSTOR 1913641
+\paragraph{}
+\label{sec: ref3} [3] Neal, R. M. (2001). Annealed importance sampling. Statistics and computing, 11, 125-139.
+\paragraph{}
+\label{sec: ref4} [4] Liu, Q., Xu, J., Jiang, R., Wong, W. H. (2021). Density estimation using deep generative neural networks. Proceedings of the National Academy of Sciences, 118(15), e2101344118.
+\paragraph{}
+\label{sec: ref5} [5] Theis, L., Oord, A. V. D.,  Bethge, M. (2015). A note on the evaluation of generative models. arXiv preprint arXiv:1511.01844.
+\paragraph{}
+\label{sec: ref6} [6] Gretton, A., Borgwardt, K. M., Rasch, M. J., Scholkopf, B., and Smola, A. J. A kernel two-sample test. Journal of Machine Learning Research, 13:723–773, 2012a.
+\paragraph{}
+\label{sec: ref7} [7] Rosenberg, Andrew, Hirschberg, Julia. (2007). V-Measure: A Conditional Entropy-Based External Cluster Evaluation Measure.. 410-420. 
+\paragraph{}
+\label{sec: ref8} [8] Bińkowski, M., Sutherland, D. J., Arbel, M., Gretton, A. (2018). Demystifying mmd gans. arXiv preprint arXiv:1801.01401.
+\paragraph{}
+\label{sec: ref9} [9] Jiralerspong, M., Bose, J., Gemp, I., Qin, C., Bachrach, Y., Gidel, G. (2024). Feature likelihood score: Evaluating the generalization of generative models using samples. Advances in Neural Information Processing Systems, 36.
+\paragraph{}
+\label{sec: ref10} [10] Sajjadi, M. S., Bachem, O., Lucic, M., Bousquet, O.,  Gelly, S. (2018). Assessing generative models via precision and recall. Advances in neural information processing systems, 31.
+\label{sec: ref11} [11] Karras, T., Laine, S., \& Aila, T. (2018). A Style-Based generator architecture for generative adversarial networks. \textit{arXiv (Cornell University)}. https://doi.org/10.48550/arxiv.1812.04948
+
+\end{document}
